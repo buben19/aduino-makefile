@@ -35,6 +35,7 @@ ifeq ($(shell expr $(ARDUINO_VERSION) '<' 150),1)
         $(error Non supported board variant)
     endif
     ARDUINO_HW_DIR = $(ARDUINO_DIR)/hardware/arduino
+    ARDUINO_BOARDS_LIST = $(ARDUINO_HW_DIR)/boards.txt
 else
     BOARD_VARIANT_LIST = $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/avr/boards.txt)
     ifneq ($(filter $(BOARD_VARIANT), $(BOARD_VARIANT_LIST)), '')
@@ -49,6 +50,7 @@ else
         endif
     endif
     ARDUINO_HW_DIR = $(ARDUINO_DIR)/hardware/arduino/$(MCU_FAMILY)
+    ARDUINO_BOARDS_LIST = $(ARDUINO_DIR)/hardware/arduino/avr/boards.txt $(ARDUINO_DIR)/hardware/arduino/sam/boards.txt
 endif
 
 define get_board_variants
@@ -252,12 +254,14 @@ $(CORE_LIB): $(CORE_OBJS) | $(CORE_DIR)
 
 show-variants:
 	@echo Supported board variants:
-	@for i in $$(grep -v -P '^#|^[\s]*$$' $(ARDUINO_HW_DIR)/boards.txt | cut -d '.' -f 1 | uniq); do \
-		if grep "^$${i}\.menu\.cpu" $(ARDUINO_HW_DIR)/boards.txt > /dev/null; then \
-			grep -o "^$${i}\.menu\.cpu\.[^\.=]\+" $(ARDUINO_HW_DIR)/boards.txt | uniq | sed 's/\..*\./ /g' | sed 's/\(.*\)/  \1/g'; \
-		else \
-			echo $$i | sed 's/\(.*\)/  \1/g'; \
-		fi \
+	@for board in $$(echo $(ARDUINO_BOARDS_LIST)); do \
+		for i in $$(grep -v -P '^#|^[\s]*$$' $$board | cut -d '.' -f 1 | uniq); do \
+			if grep "^$${i}\.menu\.cpu" $$board > /dev/null; then \
+				grep -o "^$${i}\.menu\.cpu\.[^\.=]\+" $$board | uniq | sed 's/\..*\./ /g' | sed 's/\(.*\)/  \1/g'; \
+			else \
+				echo $$i | sed 's/\(.*\)/  \1/g'; \
+			fi \
+		done \
 	done
 
 clean:
