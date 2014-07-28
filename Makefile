@@ -1,10 +1,11 @@
 # Custom Arduino makefile
 
 # TODO:
-#   - programmer
+#   - upload bootloader
 
 PORT = /dev/ttyACM0
-BOARD = mega atmega2560
+#BOARD = mega atmega2560
+BOARD = arduino_due_x_dbg
 PROGRAMMER = stk500v2
 ARDUINO_DIR = /opt/arduino-1.5.6-r2
 ARDUINO_LIBS = 
@@ -26,10 +27,13 @@ comma := ,
 # check for Arduino version
 ARDUINO_VERSION := $(shell cat $(ARDUINO_DIR)/lib/version.txt | sed -e 's/^[0-9]://g' -e 's/[.]//g' -e 's/$$/0000/' | head -c3)
 
+define get_board_variants
+$(shell grep -v -P '^#|^[\s]*$$' $1 | cut -d '.' -f 1 | grep -v '^menu$$' | uniq | grep '^$(BOARD_VARIANT)$$' > /dev/null; echo $$?)
+endef
+
 # determine arduino hardware directory
 ifeq ($(shell expr $(ARDUINO_VERSION) '<' 150),1)
-    BOARD_VARIANT_LIST = $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/boards.txt)
-    ifneq ($(filter $(BOARD_VARIANT),$(BOARD_VARIANT_LIST)), '')
+    ifeq ($(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/boards.txt),0)
         MCU_FAMILY = avr
     else
         $(error Non supported board variant)
@@ -37,13 +41,10 @@ ifeq ($(shell expr $(ARDUINO_VERSION) '<' 150),1)
     ARDUINO_HW_DIR = $(ARDUINO_DIR)/hardware/arduino
     ARDUINO_BOARDS_LIST = $(ARDUINO_HW_DIR)/boards.txt
 else
-    BOARD_VARIANT_LIST = $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/avr/boards.txt)
-    ifneq ($(filter $(BOARD_VARIANT), $(BOARD_VARIANT_LIST)), '')
+    ifeq ($(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/avr/boards.txt),0)
         MCU_FAMILY = avr
-        BOARD_VARIANT_LIST += $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/sam/boards.txt)
     else
-        BOARD_VARIANT_LIST += $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/sam/boards.txt)
-        ifneq ($(filter $(BOARD_VARIANT), $(BOARD_VARIANT_LIST)), '')
+        ifeq ($(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/sam/boards.txt),0)
             MCU_FAMILY = sam
         else
             $(error Non supported board variant)
@@ -52,10 +53,6 @@ else
     ARDUINO_HW_DIR = $(ARDUINO_DIR)/hardware/arduino/$(MCU_FAMILY)
     ARDUINO_BOARDS_LIST = $(ARDUINO_DIR)/hardware/arduino/avr/boards.txt $(ARDUINO_DIR)/hardware/arduino/sam/boards.txt
 endif
-
-define get_board_variants
-    $(filter-out menu,$(shell grep -v -P '^#|^[\s]*$$' $1 | cut -d '.' -f 1 | uniq))
-endef
 
 GET_BOARD_META = grep '^$(BOARD_VARIANT)\.' $(ARDUINO_HW_DIR)/boards.txt | sed 's/^$(BOARD_VARIANT)\.//' | awk -v cpu=$(BOARD_CPU) 'BEGIN { cpuRegex="^menu\.cpu\."cpu"\." } { if($$1 ~ /^menu\.cpu\./) { if($$1 ~ cpuRegex) { sub(cpuRegex, "", $$1); print $$1 } } else { print $$1 } }' | sort -u
 GET_META_VALUE = cut -d '=' -f 2-
@@ -202,6 +199,8 @@ COMMON_FLAGS = -lm -lm -lgcc -g -Os --param max-inline-insns-single=500 $(MCU_FL
 CFLAGS = $(PLATFORM_CFLAGS) $(COMMON_FLAGS)
 CXXFLAGS = $(PLATFORM_CXXFLAGS) $(COMMON_FLAGS)
 
+ARFLAGS = r
+
 TARGET_HEX = $(TARGET).hex
 
 all: build
@@ -300,6 +299,6 @@ endef
 
 .PHONY: all clean help upload build show-variants
 
-
 test:
-	@echo $(MAKEFILE_LIST)
+	@echo $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/sam/boards.txt)
+.PHONY: test
