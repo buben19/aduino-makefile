@@ -1,13 +1,14 @@
 # Custom Arduino makefile
 
 # TODO:
+#   - programmer
 #   - upload bootloader
 #   - don't set defines while comiling elf/bin
 #   - don't set link options while compiling objects
 
 PORT = /dev/ttyACM0
 BOARD = mega atmega2560
-PROGRAMMER = stk500v2
+PROGRAMMER = arduino
 ARDUINO_DIR = /opt/arduino-1.5.6-r2
 ARDUINO_LIBS = 
 
