@@ -2,10 +2,11 @@
 
 # TODO:
 #   - upload bootloader
+#   - don't set defines while comiling elf/bin
+#   - don't set link options while compiling objects
 
 PORT = /dev/ttyACM0
-#BOARD = mega atmega2560
-BOARD = arduino_due_x_dbg
+BOARD = mega atmega2560
 PROGRAMMER = stk500v2
 ARDUINO_DIR = /opt/arduino-1.5.6-r2
 ARDUINO_LIBS = 
@@ -58,7 +59,7 @@ GET_BOARD_META = grep '^$(BOARD_VARIANT)\.' $(ARDUINO_HW_DIR)/boards.txt | sed '
 GET_META_VALUE = cut -d '=' -f 2-
 
 ARDUINO_CORE_DIR = $(ARDUINO_HW_DIR)/cores/arduino
-ARDUINO_VARIANT_DIR_NAME := $(shell $(GET_BOARD_META) | grep '^build\.variant' | $(GET_META_VALUE))
+ARDUINO_VARIANT_DIR_NAME := $(shell $(GET_BOARD_META) | grep '^build\.variant=' | $(GET_META_VALUE))
 ARDUINO_VARIANT_DIR = $(addprefix $(ARDUINO_HW_DIR)/variants/,$(ARDUINO_VARIANT_DIR_NAME))
 ARDUINO_HW_LIBRARIES = $(addprefix $(ARDUINO_HW_DIR)/libraries/,$(shell ls $(ARDUINO_HW_DIR)/libraries))
 
@@ -74,11 +75,11 @@ CORE_SYSCALL_OBJ = $(filter $(CORE_DIR)/syscalls_sam3$(suffix $(firstword $(CORE
 CORE_LIB = $(BUILD_DIR)/arduino_core.a
 
 # linker script
-ARDUINO_LINK_SCRIPT = $(addprefix $(ARDUINO_VARIANT_DIR)/,$(shell $(GET_BOARD_META) | grep '^build\.ldscript' | $(GET_META_VALUE)))
+ARDUINO_LINK_SCRIPT = $(addprefix $(ARDUINO_VARIANT_DIR)/,$(shell $(GET_BOARD_META) | grep '^build\.ldscript=' | $(GET_META_VALUE)))
 LINK_SCRIPT_FLAG = $(addprefix -T,$(ARDUINO_LINK_SCRIPT))
 
-UPLOAD_TOOL := $(addprefix $(ARDUINO_TOOLS_DIR)/,$(shell $(GET_BOARD_META) | grep '^upload\.tool' | $(GET_META_VALUE)))
-UPLOAD_SPPED := $(shell $(GET_BOARD_META) | grep '^upload\.speed' | $(GET_META_VALUE))
+UPLOAD_TOOL := $(addprefix $(ARDUINO_TOOLS_DIR)/,$(shell $(GET_BOARD_META) | grep '^upload\.tool=' | $(GET_META_VALUE)))
+UPLOAD_SPPED := $(shell $(GET_BOARD_META) | grep '^upload\.speed=' | $(GET_META_VALUE))
 
 # define binutils
 FALSE=false
@@ -118,18 +119,20 @@ else
 ifeq ($(MCU_FAMILY),sam)
     MCU_PARAMETER_NAME = -mcpu=
     ARDUINO_SYSTEM_DIR = $(ARDUINO_HW_DIR)/system
-    PLATFORM_DEFINES = USBCON
-    PLATFORM_INCLUDES = $(ARDUINO_SYSTEM_DIR)/libsam $(ARDUINO_SYSTEM_DIR)/CMSIS/CMSIS/Include $(ARDUINO_SYSTEM_DIR)/CMSIS/Device/ATMEL
-    PLATFORM_COMMON_FLAGS = -ffunction-sections -fdata-sections
+    PLATFORM_DEFINES = USBCON ARDUINO_$(DEF_BOARD) ARDUINO_ARCH_SAM
+    PLATFORM_INCLUDES = $(addprefix $(ARDUINO_SYSTEM_DIR)/,libsam CMSIS/CMSIS/Include CMSIS/Device/ATMEL)
+    PLATFORM_COMMON_FLAGS = -ffunction-sections -fdata-sections -mthumb
     PLATFORM_CFLAGS = 
     PLATFORM_CXXFLAGS = -fno-rtti -fno-exceptions
     PLATFORM_LINK_OPTIONS = 
     PLATFORM_ELF_FLAGS = 
     BIN_FILE_SUFFIX = bin
+    LINK_GROUP_START = -Wl,--start-group
+    LINK_GROUP_END = -Wl,--end-group
     
     # sam processors needs additional binaries in core library
     CORE_VARIANT = $(ARDUINO_VARIANT_DIR)/variant.cpp
-    CORE_OBJS += $(notdir $(CORE_VARIANT))
+    CORE_OBJS += $(addprefix $(CORE_DIR)/,$(subst .cpp,.o,$(notdir $(CORE_VARIANT))))
     OBJCOPY_CMD = $(OBJCOPY) -O binary $< $@
     UPLOAD_CMD = stty -F $(PORT) cs8 1200 hupcl; $(UPLOAD_TOOL) -U false -e -v -w -b $(PROJECT_BIN_FILE) -R
 endif
@@ -161,21 +164,21 @@ INCLUDES += $(PWD)
 INCLUDE_FLAGS = $(addprefix -I,$(INCLUDES))
 
 # setup defines
-DEF_MCU := $(shell $(GET_BOARD_META) | grep '^build\.mcu' | $(GET_META_VALUE))
+DEF_MCU := $(shell $(GET_BOARD_META) | grep '^build\.mcu=' | $(GET_META_VALUE))
 MCU_FLAG = $(addprefix $(MCU_PARAMETER_NAME),$(DEF_MCU))
-DEF_F_CPU := $(shell $(GET_BOARD_META) | grep '^build\.f_cpu' | $(GET_META_VALUE))
+DEF_F_CPU := $(shell $(GET_BOARD_META) | grep '^build\.f_cpu=' | $(GET_META_VALUE))
 DEF_F_CPU_FLAG = $(addprefix F_CPU=,$(DEF_F_CPU))
-DEF_PID := $(shell $(GET_BOARD_META) | grep '^build\.pid' | $(GET_META_VALUE))
+DEF_PID := $(shell $(GET_BOARD_META) | grep '^build\.pid=' | $(GET_META_VALUE))
 ifeq ($(DEF_PID),)
     DEF_PID = null
 endif
 DEF_PID_FLAG = $(addprefix USB_PID=,$(DEF_PID))
-DEF_VID := $(shell $(GET_BOARD_META) | grep '^build\.vid' | $(GET_META_VALUE))
+DEF_VID := $(shell $(GET_BOARD_META) | grep '^build\.vid=' | $(GET_META_VALUE))
 ifeq ($(DEF_VID),)
     DEF_VID = null
 endif
 DEF_VID_FLAG = $(addprefix USB_VID=,$(DEF_VID))
-DEF_BOARD := $(shell $(GET_BOARD_META) | grep '^build\.board' | $(GET_META_VALUE))
+DEF_BOARD := $(shell $(GET_BOARD_META) | grep '^build\.board=' | $(GET_META_VALUE))
 DEF_BOARD_FLAG = $(addprefix BOARD=,$(DEF_BOARD))
 
 # define flags
@@ -187,9 +190,9 @@ LINK_OPTIONS += $(PLATFORM_LINK_OPTIONS)
 LINK_FLAGS = $(addprefix -Wl$(comma),$(LINK_OPTIONS)) $(LINK_SCRIPT_FLAG)
 
 # define buil elf file features
-ARDUINO_VARIANT_LIB := $(addprefix $(ARDUINO_VARIANT_DIR)/,$(shell $(GET_BOARD_META) | grep '^build\.variant_system_lib' | $(GET_META_VALUE)))
+ARDUINO_VARIANT_LIB := $(addprefix $(ARDUINO_VARIANT_DIR)/,$(shell $(GET_BOARD_META) | grep '^build\.variant_system_lib=' | $(GET_META_VALUE)))
 
-EXTRA_FLAGS := $(shell $(GET_BOARD_META) | grep '^build\.extra_flags' | $(GET_META_VALUE))
+EXTRA_FLAGS := $(shell $(GET_BOARD_META) | grep '^build\.extra_flags=' | $(GET_META_VALUE))
 
 # compilation flags common to both c and c++
 WARNINGS = all
@@ -226,7 +229,7 @@ $(BUILD_DIR)/%.o: %.cpp | $(BUILD_DIR)
 	$(CXX) -c $(CXXFLAGS) $(INCLUDE_FLAGS) $(DEFINE_FLAGS) -o $@ $<
 
 $(PROJECT_ELF_FILE): $(CORE_LIB) $(PROJECT_MAIN_FILE) $(OBJ) | $(BUILD_DIR)
-	$(CXX) $(LINK_FLAGS) $(CORE_SYSCALL_OBJ) $(OBJ) $(ARDUINO_VARIANT_LIB) $(CORE_LIB) $(CXXFLAGS) -o $@
+	$(CXX) $(CXXFLAGS) $(LINK_FLAGS) $(LINK_GROUP_START) $(CORE_SYSCALL_OBJ) $(OBJ) $(ARDUINO_VARIANT_LIB) $(CORE_LIB) $(LINK_GROUP_END) -o $@
 
 $(PROJECT_BIN_FILE): $(PROJECT_ELF_FILE) | $(BUILD_DIR)
 	$(OBJCOPY_CMD)
@@ -238,11 +241,11 @@ upload: build
 
 # arduino core library
 $(CORE_DIR)/%.o: $(ARDUINO_CORE_DIR)/%.c | $(CORE_DIR)
-	if test -n $(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^)); then mkdir -p $(CORE_DIR)/$(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^)); fi
+	if test -n "$(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^))"; then mkdir -p $(CORE_DIR)/$(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^)); fi
 	$(CC) -c $(CFLAGS) $(INCLUDE_FLAGS) $(DEFINE_FLAGS) -o $@ $^
 
 $(CORE_DIR)/%.o: $(ARDUINO_CORE_DIR)/%.cpp | $(CORE_DIR)
-	if test -n $(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^)); then mkdir -p $(CORE_DIR)/$(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^)); fi
+	if test -n "$(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^))"; then mkdir -p $(CORE_DIR)/$(subst $(notdir $^),,$(subst $(ARDUINO_CORE_DIR)/,,$^)); fi
 	$(CXX) -c $(CXXFLAGS) $(INCLUDE_FLAGS) $(DEFINE_FLAGS) -o $@ $^
 
 $(CORE_DIR)/%.o: $(CORE_VARIANT) | $(CORE_DIR)
@@ -266,6 +269,9 @@ show-variants:
 clean:
 	rm -f $(PROJECT_MAIN_FILE)
 	rm -rf $(BUILD_DIR)
+
+upload-bootloader:
+	$(error not implemented yet)
 
 help:
 	@echo "\
@@ -292,13 +298,9 @@ $(DEP_DIR)/%.d: %.c | $(DEP_DIR)
 	$(create-dep)
 
 define create-dep
-	$(CC) -M $(INCLUDE_FLAGS) $(DEFINE_FLAGS) $(MCU_FLAG) $< > $@.$$$$; \
+	$(CC) -M $(CFLAGS) $(INCLUDE_FLAGS) $(DEFINE_FLAGS) $< > $@.$$$$; \
 	sed 's,\($*\)\.o[ :]*,$(BUILD_DIR)/\1.o $@ : ,g' < $@.$$$$ > $@; \
 	rm -f $@.$$$$
 endef
 
-.PHONY: all clean help upload build show-variants
-
-test:
-	@echo $(call get_board_variants,$(ARDUINO_DIR)/hardware/arduino/sam/boards.txt)
-.PHONY: test
+.PHONY: all clean help upload build show-variants upload-bootloader
